@@ -19,11 +19,16 @@ def search_mast_qso_cosfuv(gal_name, gal_ra, gal_dec, gal_dist_kpc=300,
     from astropy.coordinates import SkyCoord
     from astroquery import mast
     from yzObs.kpc2deg import kpc2deg
+    from yzObs.deg2kpc import deg2kpc
 
     gal_coord = SkyCoord(ra=gal_ra*u.deg, dec=gal_dec*u.deg)
     print("*"*80)
     if within_radius_deg == 0.:
         sepdeg = kpc2deg(within_radius_kpc, gal_dist_kpc)
+        if sepdeg > 30.:
+            print("This sep=%.1f deg is too big, gonna just search within 5 deg instead."%(sepdeg))
+            sepdeg = 5
+            within_radius_kpc = deg2kpc(sepdeg, gal_dist_kpc)
         print("Searching MAST within %.1f kpc of %s (RA=%.4f, DEC=%.4f, l=%.4f, b=%.4f)"%(within_radius_kpc,
                                                                                       gal_name, gal_ra, gal_dec,
                                                                                       gal_coord.galactic.l.degree,
@@ -34,6 +39,7 @@ def search_mast_qso_cosfuv(gal_name, gal_ra, gal_dec, gal_dist_kpc=300,
                                                                                       gal_name, gal_ra, gal_dec,
                                                                                       gal_coord.galactic.l.degree,
                                                                                       gal_coord.galactic.b.degree))
+
     mast_table = mast.Observations.query_criteria(coordinates=gal_coord,
                                                   radius=sepdeg*u.degree,
                                                   instrument_name='COS/FUV')
