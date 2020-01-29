@@ -1,7 +1,19 @@
+def save_mast_result(mast_table, tb_name='./mast_search_result'):
+    save_cols = ['target_name', 's_ra', 's_dec', 't_exptime', 'filters',
+                 'target_classification', 'instrument_name', 'proposal_pi', 'proposal_id']
+    all_cols = mast_table.colnames
+    for icol in all_cols:
+        if icol not in save_cols:
+            mast_table.remove_column(icol)
+    mast_table.write(tb_name+'.csv', overwrite=True)
+    print("Found %d entries, save mast search result to %s.csv\n\n"%(len(mast_table), tb_name))
+
+
 def search_mast_cos_stis(gal_name, gal_ra, gal_dec, gal_dist_kpc,
                          instrument_name='COS/FUV',
+                         filters=['G130M', 'G160M'],
                          search_r_kpc=100,
-                         search_r_deg=0.):
+                         search_r_deg=0., yes_print=True):
     """
     Archival search for COS/FUV data within certain radius of (gal_ra, gal_dec)
 
@@ -14,6 +26,8 @@ def search_mast_cos_stis(gal_name, gal_ra, gal_dec, gal_dist_kpc,
                   Note that if search_r_deg is not 0, then this code
                   will always go with search_r_deg choice. Otherwise,
                   use search_r_kpc and gal_dist_Mpc options.
+    instrument_name: 'COS/FUV', 'STIS/FUV-MAMA', 'STIS/NUV-MAMA',  etc.
+    filters: e.g., 'G130M', ['G130M', 'G160M'], ['E140M', 'E140H', 'G140M']
 
     History:
     Sometime in 2017 probably... YZ wrote this.
@@ -55,36 +69,50 @@ def search_mast_cos_stis(gal_name, gal_ra, gal_dec, gal_dist_kpc,
     ##### ok, now search! #####
     mast_table = mast.Observations.query_criteria(coordinates=gal_coord,
                                                   radius=search_r_deg*u.degree,
-                                                  instrument_name=instrument_name)
+                                                  instrument_name=instrument_name,
+                                                  filters=filters)
     if len(mast_table) == 0:
         print("Sorry, Find nothing.")
     else:
-        # Check how many targets
-        arx_objs = np.unique(mast_table['target_name'])
-        # arx_ras = np.unique(mast_table['s_ra'])
-        # arx_decs = np.unique(mast_table['s_dec'])
-        for i in range(len(arx_objs)):
-            print("-"*15 + " MAST/%s Search "%(instrument_name)+"-"*15)
-            ind = np.where(mast_table['target_name'] == arx_objs[i])[0][0]
-            arx_ra = mast_table['s_ra'][ind]
-            arx_dec = mast_table['s_dec'][ind]
-            arx_coord = SkyCoord(ra=arx_ra*u.deg, dec=arx_dec*u.deg, distance=gal_dist_kpc*u.kpc)
+        ### save the searching result
+        mast_table['s_ra'] = np.around(mast_table['s_ra'], decimals=4)
+        mast_table['s_dec'] = np.around(mast_table['s_dec'], decimals=4)
+        mast_table['t_exptime'] = np.around(mast_table['t_exptime'], decimals=1)
+        from datetime import date
+        today = date.today().strftime("%Y%b%d")
+        intrument_name_edit = instrument_name.replace('/', '-')
+        tb_name = './MAST_%s_%s_%.1fdeg_%.1fkpc_%s'%(intrument_name_edit, gal_name,
+                                                     search_r_deg, search_r_kpc,
+                                                     today)
+        save_mast_result(mast_table, tb_name=tb_name)
 
-            # same as gal_coord, but with distance now
-            tar_coord = SkyCoord(ra=gal_ra*u.deg, dec=gal_dec*u.deg, distance=gal_dist_kpc*u.kpc)
-            arx_dist = tar_coord.separation_3d(arx_coord)
+        ### Check how many targets, and print them out
+        if yes_print == True:
+            arx_objs = np.unique(mast_table['target_name'])
+            # arx_ras = np.unique(mast_table['s_ra'])
+            # arx_decs = np.unique(mast_table['s_dec'])
+            for i in range(len(arx_objs)):
+                print("-"*15 + " MAST/%s Search "%(instrument_name)+"-"*15)
+                ind = np.where(mast_table['target_name'] == arx_objs[i])[0][0]
+                arx_ra = mast_table['s_ra'][ind]
+                arx_dec = mast_table['s_dec'][ind]
+                arx_coord = SkyCoord(ra=arx_ra*u.deg, dec=arx_dec*u.deg, distance=gal_dist_kpc*u.kpc)
 
-            print("Found: "+arx_objs[i])
-            print('impact=%.1f kpc, ra=%.4f, dec=%.4f, l=%.4f, b=%.4f'%(arx_dist.kpc,
+                # same as gal_coord, but with distance now
+                tar_coord = SkyCoord(ra=gal_ra*u.deg, dec=gal_dec*u.deg, distance=gal_dist_kpc*u.kpc)
+                arx_dist = tar_coord.separation_3d(arx_coord)
+
+                print("Found: "+arx_objs[i])
+                print('impact=%.1f kpc, ra=%.4f, dec=%.4f, l=%.4f, b=%.4f'%(arx_dist.kpc,
                                                                         arx_ra, arx_dec,
                                                                         arx_coord.galactic.l.degree,
                                                                         arx_coord.galactic.b.degree))
-            print("Observation Details: ")
-            print('%10s %11s %10s %06s'%("Filter", "ExpTime", "PI", "ID"))
-            for j in range(len(mast_table)):
-                if mast_table['target_name'][j] == arx_objs[i]:
-                    print('%10s %10ds %10s %06s'%(mast_table['filters'][j],
+                print("Observation Details: ")
+                print('%10s %11s %10s %06s'%("Filter", "ExpTime", "PI", "ID"))
+                for j in range(len(mast_table)):
+                    if mast_table['target_name'][j] == arx_objs[i]:
+                        print('%10s %10ds %10s %06s'%(mast_table['filters'][j],
                                                   mast_table['t_exptime'][j],
                                                   mast_table['proposal_pi'][j].split(',')[0],
                                                   mast_table['proposal_id'][j]))
-            print("\n")
+                print("\n")
